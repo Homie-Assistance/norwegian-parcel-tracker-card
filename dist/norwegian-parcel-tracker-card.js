@@ -3,8 +3,6 @@ class NorwegianParcelTrackingCard extends HTMLElement {
     super();
     this._addMessage = "";
     this._addBusy = false;
-    this._trackingDraft = "";
-    this._pendingRender = false;
   }
 
   setConfig(config) {
@@ -22,17 +20,6 @@ class NorwegianParcelTrackingCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-
-    // Home Assistant pushes frequent state updates. Re-rendering the whole card
-    // while the user is typing replaces the input element and can steal focus.
-    // Keep the current input stable until the user leaves the field.
-    const input = this.querySelector("#npt-track");
-    if (input === document.activeElement && !this._addBusy) {
-      this._trackingDraft = input.value;
-      this._pendingRender = true;
-      return;
-    }
-
     this.render();
   }
 
@@ -42,12 +29,6 @@ class NorwegianParcelTrackingCard extends HTMLElement {
 
   render() {
     if (!this._hass) return;
-
-    const oldInput = this.querySelector("#npt-track");
-    const inputHadFocus = oldInput === document.activeElement;
-    const inputValue = oldInput?.value ?? this._trackingDraft ?? "";
-    const selectionStart = oldInput?.selectionStart ?? inputValue.length;
-    const selectionEnd = oldInput?.selectionEnd ?? inputValue.length;
 
     const cfg = this.config || {};
     const states = this._getParcelStates();
@@ -59,7 +40,6 @@ class NorwegianParcelTrackingCard extends HTMLElement {
           <div class="npt-header">
             <div class="npt-title">${this._escape(cfg.title || "Pakker")}</div>
             <div class="npt-add">
-              <input id="npt-track" placeholder="Sporingsnummer" value="${this._escapeAttr(inputValue)}" ${this._addBusy ? "disabled" : ""} />
               <button id="npt-add-btn" title="Legg til pakke" ${this._addBusy ? "disabled" : ""}>+</button>
             </div>
             ${this._addMessage ? `<div class="npt-add-message">${this._escape(this._addMessage)}</div>` : ""}
@@ -71,10 +51,8 @@ class NorwegianParcelTrackingCard extends HTMLElement {
         .npt-card { padding: 16px; }
         .npt-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
         .npt-title { font-size: 1.15rem; font-weight: 600; }
-        .npt-add { display: flex; gap: 4px; }
-        .npt-add input { max-width: 150px; padding: 6px; border: 1px solid var(--divider-color); border-radius: 6px; background: var(--card-background-color); color: var(--primary-text-color); }
-        .npt-add button { border: 0; border-radius: 6px; padding: 4px 10px; cursor: pointer; background: var(--primary-color); color: var(--text-primary-color); font-weight: 700; }
-        .npt-add button:disabled, .npt-add input:disabled { opacity: 0.65; cursor: progress; }
+        .npt-add button { border: 0; border-radius: 6px; padding: 4px 10px; cursor: pointer; background: var(--primary-color); color: var(--text-primary-color); font-weight: 700; font-size: 1.1rem; }
+        .npt-add button:disabled { opacity: 0.65; cursor: progress; }
         .npt-add-message { font-size: 0.8rem; opacity: 0.85; text-align: right; }
         .npt-row { margin: 8px 0; border-radius: 10px; padding: 12px; background: var(--secondary-background-color); color: var(--primary-text-color); border-left: 5px solid var(--divider-color); }
         .npt-row.delivered { background: #1f7a3f; color: #fff; border-left-color: #0b4f28; }
@@ -87,26 +65,6 @@ class NorwegianParcelTrackingCard extends HTMLElement {
       </style>
     `;
     this.querySelector("#npt-add-btn")?.addEventListener("click", () => this.addParcel());
-    this.querySelector("#npt-track")?.addEventListener("input", (ev) => {
-      this._trackingDraft = ev.target.value;
-    });
-    this.querySelector("#npt-track")?.addEventListener("keydown", (ev) => {
-      if (ev.key === "Enter") this.addParcel();
-    });
-    this.querySelector("#npt-track")?.addEventListener("blur", () => {
-      if (this._pendingRender && !this._addBusy) {
-        this._pendingRender = false;
-        this.render();
-      }
-    });
-
-    const newInput = this.querySelector("#npt-track");
-    if (inputHadFocus && newInput && !this._addBusy) {
-      newInput.focus();
-      try {
-        newInput.setSelectionRange(selectionStart, selectionEnd);
-      } catch (_err) {}
-    }
   }
 
   _getParcelStates() {
@@ -185,10 +143,10 @@ class NorwegianParcelTrackingCard extends HTMLElement {
   }
 
   async addParcel() {
-    const input = this.querySelector("#npt-track");
-    const tracking = input?.value?.trim();
-    this._trackingDraft = input?.value ?? "";
-    if (!tracking || this._addBusy) return;
+    if (this._addBusy) return;
+
+    const tracking = window.prompt("Sporingsnummer:")?.trim();
+    if (!tracking) return;
 
     this._addBusy = true;
     this._addMessage = "Legger til pakke…";
@@ -197,15 +155,10 @@ class NorwegianParcelTrackingCard extends HTMLElement {
     try {
       await this._hass.callService("norwegian_parcel_tracker", "add_parcel", { tracking_number: tracking });
       this._addMessage = "Pakke lagt til. Det kan ta litt tid før den vises.";
-      const freshInput = this.querySelector("#npt-track");
-      this._trackingDraft = "";
-      if (freshInput) freshInput.value = "";
     } catch (err) {
-      // Keep the tracking number in the input so the user can retry.
       this._addMessage = `Kunne ikke legge til pakke: ${err?.message || "ukjent feil"}`;
     } finally {
       this._addBusy = false;
-      this._pendingRender = false;
       this.render();
       window.setTimeout(() => {
         this._addMessage = "";

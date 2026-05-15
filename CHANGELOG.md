@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0
+
+- Replace inline tracking-number input with a browser prompt dialog. The input field was losing focus on every Home Assistant state update; the prompt is modal and unaffected by state changes.
+
 ## 1.0.0
 
 - Add `deploy.sh` for automated deployment with HA install-type detection (HassOS, Docker, HACS vs standalone, existing-path vs default-path choice).
