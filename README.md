@@ -16,6 +16,25 @@ HACS installs the card resource as:
 /hacsfiles/norwegian-parcel-tracker-card/norwegian-parcel-tracker-card.js
 ```
 
+## Manual installation (without HACS)
+
+1. Copy `dist/norwegian-parcel-tracker-card.js` to a subfolder under your HA `www/` directory:
+
+   | HA install type | Destination |
+   |---|---|
+   | HassOS / HA OS | `/homeassistant/www/norwegian-parcel-tracker-card/norwegian-parcel-tracker-card.js` |
+   | Docker | `/config/www/norwegian-parcel-tracker-card/norwegian-parcel-tracker-card.js` |
+
+2. In **HA → Settings → Dashboards → Resources**, add the file as a **JavaScript module** with the URL:
+
+   ```text
+   /local/norwegian-parcel-tracker-card/norwegian-parcel-tracker-card.js
+   ```
+
+   Append `?v=1` (increment on each update) to bust the browser cache.
+
+3. The `deploy.sh` script in this repo automates steps 1–2 and detects your install type automatically.
+
 ## Card configuration
 
 ```yaml
