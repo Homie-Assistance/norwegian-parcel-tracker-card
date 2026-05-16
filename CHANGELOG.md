@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0
+
+- Move card JS file to repository root (was `dist/`). HACS was preserving
+  the `dist/` subdirectory when installing, causing the file path and the
+  auto-registered resource URL to diverge.
+- Enable `zip_release` in `hacs.json` so HACS downloads from tagged GitHub
+  releases rather than the live main branch. Create a GitHub release for
+  each version tag to activate this.
+
 ## 1.1.0
 
 - Replace inline tracking-number input with a browser prompt dialog. The input field was losing focus on every Home Assistant state update; the prompt is modal and unaffected by state changes.

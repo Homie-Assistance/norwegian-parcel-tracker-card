@@ -12,7 +12,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SRC_FILE="$SCRIPT_DIR/dist/norwegian-parcel-tracker-card.js"
+SRC_FILE="$SCRIPT_DIR/norwegian-parcel-tracker-card.js"
 DRY_RUN=false
 FORCE_DEFAULT=false
 for arg in "$@"; do

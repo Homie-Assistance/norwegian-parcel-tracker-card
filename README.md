@@ -29,7 +29,7 @@ And registers the Lovelace resource as:
 
 ## Manual installation (without HACS)
 
-1. Copy `dist/norwegian-parcel-tracker-card.js` to a subfolder under your HA `www/` directory:
+1. Copy `norwegian-parcel-tracker-card.js` to a subfolder under your HA `www/` directory:
 
    | HA install type | Destination |
    |---|---|
