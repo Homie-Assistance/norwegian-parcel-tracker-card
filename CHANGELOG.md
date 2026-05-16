@@ -5,9 +5,6 @@
 - Move card JS file to repository root (was `dist/`). HACS was preserving
   the `dist/` subdirectory when installing, causing the file path and the
   auto-registered resource URL to diverge.
-- Enable `zip_release` in `hacs.json` so HACS downloads from tagged GitHub
-  releases rather than the live main branch. Create a GitHub release for
-  each version tag to activate this.
 
 ## 1.1.0
 
