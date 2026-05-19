@@ -2,6 +2,10 @@
 
 A Lovelace dashboard card for parcels tracked by [Norwegian parcel tracker](https://github.com/Homie-Assistance/norwegian-parcel-tracker).
 
+![Card overview](docs/card.jpeg)
+
+![Card settings](docs/card_settings.jpeg)
+
 ## Installation with HACS
 
 Add **this** repository as a HACS custom repository with category **Frontend**:
