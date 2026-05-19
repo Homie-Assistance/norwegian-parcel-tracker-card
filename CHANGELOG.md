@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.1
+
+- Added HACS validation workflow.
+- Added screenshots to README.
+
 ## 1.3.0
 
 - Add settings panel (⚙ button): language, row colors, card height, show_delivered, highlight_stuck, stale/critical thresholds. Settings persist in browser localStorage.
