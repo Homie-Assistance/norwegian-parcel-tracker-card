@@ -14,7 +14,6 @@ const NPT_STRINGS = {
       langNb: "Norsk", langEn: "English",
       colors: "Farger", colorNormal: "Normal rad", colorNormalTheme: "Bruk temafarge",
       colorStale: "Treg", colorCritical: "Kritisk (fast)", colorDelivered: "Levert",
-      cardHeight: "Korthøyde", heightAuto: "Auto", heightFixed: "Fast (px)",
       showDelivered: "Vis leverte pakker", highlightStuck: "Fremhev trege pakker",
       staleHours: "Timer → treg", criticalHours: "Timer → kritisk",
       on: "På", off: "Av",
@@ -35,7 +34,6 @@ const NPT_STRINGS = {
       langNb: "Norsk", langEn: "English",
       colors: "Colors", colorNormal: "Normal row", colorNormalTheme: "Use theme color",
       colorStale: "Stale", colorCritical: "Critical (stuck)", colorDelivered: "Delivered",
-      cardHeight: "Card height", heightAuto: "Auto", heightFixed: "Fixed (px)",
       showDelivered: "Show delivered parcels", highlightStuck: "Highlight stuck parcels",
       staleHours: "Hours → stale", criticalHours: "Hours → critical",
       on: "On", off: "Off",
@@ -69,10 +67,6 @@ class NorwegianParcelTrackingCard extends HTMLElement {
   }
 
   getCardSize() {
-    const cfg = this._getCfg();
-    if (cfg.card_height === "fixed" && Number(cfg.card_height_px) > 0) {
-      return Math.ceil(Number(cfg.card_height_px) / 50);
-    }
     return 3;
   }
 
@@ -109,8 +103,6 @@ class NorwegianParcelTrackingCard extends HTMLElement {
       color_stale: "#b88700",
       color_critical: "#8b1e1e",
       color_delivered: "#1f7a3f",
-      card_height: "auto",
-      card_height_px: 400,
       ...(this._yamlConfig || {}),
       ...this._loadStored(),
     };
@@ -139,8 +131,6 @@ class NorwegianParcelTrackingCard extends HTMLElement {
       `--npt-delivered:${this._safeColor(cfg.color_delivered, "#1f7a3f")};`,
     ].join("");
 
-    const bodyStyle = cfg.card_height === "fixed" && Number(cfg.card_height_px) > 0
-      ? `max-height:${cfg.card_height_px}px;overflow-y:auto;` : "";
 
     this.innerHTML = `
       <ha-card style="${cssVars}">
@@ -154,7 +144,7 @@ class NorwegianParcelTrackingCard extends HTMLElement {
             </div>
           </div>
           ${this._addMessage ? `<div class="npt-msg">${this._escape(this._addMessage)}</div>` : ""}
-          <div style="${bodyStyle}">${rows || `<div class="npt-empty">${this._str("empty")}</div>`}</div>
+          <div>${rows || `<div class="npt-empty">${this._str("empty")}</div>`}</div>
         </div>
       </ha-card>
       ${this._styles()}
@@ -246,15 +236,6 @@ class NorwegianParcelTrackingCard extends HTMLElement {
               <input type="color" id="clr-delivered" value="${cfg.color_delivered || "#1f7a3f"}">
             </div>
 
-            <div class="npt-ssec">${s.cardHeight}</div>
-            <div class="npt-srow">
-              <div class="npt-toggle-wrap">
-                <button class="npt-toggle ${cfg.card_height !== "fixed" ? "on" : ""}" data-height="auto">${s.heightAuto}</button>
-                <button class="npt-toggle ${cfg.card_height === "fixed" ? "on" : ""}" data-height="fixed">${s.heightFixed}</button>
-              </div>
-              <input type="number" id="height-px" value="${cfg.card_height_px || 400}" min="100" max="2000"
-                class="npt-num-input" style="visibility:${cfg.card_height === "fixed" ? "visible" : "hidden"}">
-            </div>
 
             <div class="npt-ssec"></div>
             ${toggle("show_delivered", cfg.show_delivered !== false, s.showDelivered)}
@@ -297,15 +278,6 @@ class NorwegianParcelTrackingCard extends HTMLElement {
       });
     });
 
-    // Height toggle
-    this.querySelectorAll(".npt-toggle[data-height]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        this.querySelectorAll(".npt-toggle[data-height]").forEach(b => b.classList.remove("on"));
-        btn.classList.add("on");
-        const px = this.querySelector("#height-px");
-        if (px) px.style.visibility = btn.dataset.height === "fixed" ? "visible" : "hidden";
-      });
-    });
 
     // Normal color theme checkbox
     const themeChk = this.querySelector("#clr-normal-theme");
@@ -334,10 +306,6 @@ class NorwegianParcelTrackingCard extends HTMLElement {
     stored.color_critical = this.querySelector("#clr-critical")?.value || "#8b1e1e";
     stored.color_delivered = this.querySelector("#clr-delivered")?.value || "#1f7a3f";
 
-    const heightBtn = this.querySelector(".npt-toggle[data-height].on");
-    stored.card_height = heightBtn?.dataset.height === "fixed" ? "fixed" : "auto";
-    const hpx = parseInt(this.querySelector("#height-px")?.value || "400", 10);
-    stored.card_height_px = isNaN(hpx) ? 400 : Math.max(100, Math.min(2000, hpx));
 
     ["show_delivered", "highlight_stuck"].forEach(id => {
       const btn = this.querySelector(`.npt-toggle[data-tid="${id}"].on`);
