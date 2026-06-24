@@ -458,7 +458,7 @@ class NorwegianParcelTrackingCard extends HTMLElement {
   _isDelivered(attrs) {
     if (attrs.is_delivered === true) return true;
     const text = `${attrs.status || ""} ${attrs.latest_event || ""} ${attrs.status_code || ""}`.toLowerCase();
-    return text.includes("pakken er levert") || text.includes("delivered");
+    return text.includes("pakken er levert") || text.includes("delivered") || text.includes("hentet pakken");
   }
 
   // ── Add parcel ───────────────────────────────────────────────────────────────
