@@ -9,6 +9,7 @@ const NPT_STRINGS = {
     pickup: "Hentested", pickupNA: "Hentested er ikke tilgjengelig for denne pakken",
     eta: "Estimert levering", lastSeen: "Sist sett", time: "Tid",
     orderHome: "Bestille hjemlevering",
+    refresh: "Oppdater",
     s: {
       title: "Innstillinger", language: "Språk",
       langNb: "Norsk", langEn: "English",
@@ -29,6 +30,7 @@ const NPT_STRINGS = {
     pickup: "Pickup", pickupNA: "Pickup location not available for this parcel",
     eta: "Estimated delivery", lastSeen: "Last seen", time: "Time",
     orderHome: "Order home delivery",
+    refresh: "Refresh",
     s: {
       title: "Settings", language: "Language",
       langNb: "Norsk", langEn: "English",
@@ -54,6 +56,9 @@ class NorwegianParcelTrackingCard extends HTMLElement {
     this._addBusy = false;
     this._showSettings = false;
     this._yamlConfig = null;
+    this._dragging = false;
+    this._animating = false;
+    this._swipeController = null;
   }
 
   setConfig(config) {
@@ -62,8 +67,24 @@ class NorwegianParcelTrackingCard extends HTMLElement {
   }
 
   set hass(hass) {
+    const prev = this._hass;
     this._hass = hass;
-    if (!this._showSettings) this.render();
+    if (!this._showSettings && !this._dragging && !this._animating) {
+      if (!prev || this._parcelStatesChanged(prev.states, hass.states)) this.render();
+    }
+  }
+
+  _parcelStatesChanged(prevStates, nextStates) {
+    const cfg = this._getCfg();
+    let ids;
+    if (Array.isArray(cfg.entities) && cfg.entities.length > 0) {
+      ids = cfg.entities;
+    } else {
+      const isMaster = (id, s) => id.startsWith("sensor.") &&
+        (s?.attributes?.npt_master_entity === true || s?.attributes?.parcel_tracker_entity === "status");
+      ids = Object.keys(nextStates).filter(id => isMaster(id, nextStates[id]));
+    }
+    return ids.some(id => prevStates[id] !== nextStates[id]);
   }
 
   getCardSize() {
@@ -133,26 +154,32 @@ class NorwegianParcelTrackingCard extends HTMLElement {
 
 
     this.innerHTML = `
-      <ha-card style="${cssVars}">
-        <div class="npt-card">
-          <div class="npt-header">
-            <div class="npt-title">${this._escape(cfg.title)}</div>
-            <div class="npt-actions">
-              <button id="npt-flag-btn" class="npt-icon-btn npt-flag-btn" title="${cfg.language === "nb" ? "Norsk" : "English"}">${flagSvg}</button>
-              <button id="npt-settings-btn" class="npt-icon-btn" title="${this._str("s.title")}">⚙</button>
-              <button id="npt-add-btn" class="npt-icon-btn npt-add-icon" title="${this._str("addBtn")}" ${this._addBusy ? "disabled" : ""}>+</button>
+      <div class="npt-swipe-wrapper">
+        <div class="npt-refresh-hint">↻ ${this._str("refresh")}</div>
+        <div class="npt-swipe-content">
+          <ha-card style="${cssVars}">
+            <div class="npt-card">
+              <div class="npt-header">
+                <div class="npt-title">${this._escape(cfg.title)}</div>
+                <div class="npt-actions">
+                  <button id="npt-flag-btn" class="npt-icon-btn npt-flag-btn" title="${cfg.language === "nb" ? "Norsk" : "English"}">${flagSvg}</button>
+                  <button id="npt-settings-btn" class="npt-icon-btn" title="${this._str("s.title")}">⚙</button>
+                  <button id="npt-add-btn" class="npt-icon-btn npt-add-icon" title="${this._str("addBtn")}" ${this._addBusy ? "disabled" : ""}>+</button>
+                </div>
+              </div>
+              ${this._addMessage ? `<div class="npt-msg">${this._escape(this._addMessage)}</div>` : ""}
+              <div>${rows || `<div class="npt-empty">${this._str("empty")}</div>`}</div>
             </div>
-          </div>
-          ${this._addMessage ? `<div class="npt-msg">${this._escape(this._addMessage)}</div>` : ""}
-          <div>${rows || `<div class="npt-empty">${this._str("empty")}</div>`}</div>
+          </ha-card>
         </div>
-      </ha-card>
+      </div>
       ${this._styles()}
     `;
 
     this.querySelector("#npt-add-btn")?.addEventListener("click", () => this._addParcel());
     this.querySelector("#npt-settings-btn")?.addEventListener("click", () => this._openSettings());
     this.querySelector("#npt-flag-btn")?.addEventListener("click", () => this._toggleLang());
+    this._attachSwipeGesture();
   }
 
   _renderRow(state, cfg) {
@@ -172,10 +199,83 @@ class NorwegianParcelTrackingCard extends HTMLElement {
       ? `<div><a class="npt-link" href="${this._escapeAttr(homeUrl)}" target="_blank" rel="noreferrer">${this._str("orderHome")}</a></div>`
       : "";
 
+    const spinner = a.refreshing ? `<span class="npt-spinner"></span>` : "";
     return `<div class="npt-row ${cls}">
-      <div class="npt-main"><span>${this._escape(sender)}</span><span>${this._escape(status)}</span></div>
+      <div class="npt-main"><span>${this._escape(sender)}</span><span>${this._escape(status)}${spinner}</span></div>
       <div class="npt-meta"><div>${this._escape(latest)}</div>${loc}${time}${eta}${pickup}${home}</div>
     </div>`;
+  }
+
+  // ── Swipe-to-refresh ─────────────────────────────────────────────────────────
+
+  _attachSwipeGesture() {
+    if (this._swipeController) this._swipeController.abort();
+    this._swipeController = new AbortController();
+    const { signal } = this._swipeController;
+
+    const wrapper = this.querySelector(".npt-swipe-wrapper");
+    const content = this.querySelector(".npt-swipe-content");
+    const hint = this.querySelector(".npt-refresh-hint");
+    if (!wrapper || !content || !hint) return;
+
+    const THRESHOLD = 110;
+    let startX = 0, startY = 0, active = false, isHoriz = null, delta = 0;
+
+    const onStart = (x, y) => {
+      startX = x; startY = y; active = true; isHoriz = null; delta = 0;
+    };
+
+    const onMove = (x, y) => {
+      if (!active) return;
+      const dx = x - startX, dy = y - startY;
+      if (isHoriz === null) {
+        if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+        isHoriz = Math.abs(dx) > Math.abs(dy);
+      }
+      if (!isHoriz || dx <= 0) return;
+      this._dragging = true;
+      delta = dx;
+      const progress = Math.min(dx / THRESHOLD, 1);
+      content.style.transform = `translateX(${Math.min(dx * 0.55, THRESHOLD * 0.55)}px)`;
+      hint.style.opacity = String(progress);
+      hint.style.transform = `translateX(${Math.min(dx * 0.25, 28)}px)`;
+    };
+
+    const onEnd = () => {
+      if (!active) return;
+      active = false;
+      const triggered = delta >= THRESHOLD;
+      delta = 0; isHoriz = null;
+      content.style.transform = "";
+      hint.style.opacity = "0";
+      hint.style.transform = "";
+      this._dragging = false;
+      if (triggered) this._triggerRefresh();
+    };
+
+    wrapper.addEventListener("touchstart", e => onStart(e.touches[0].clientX, e.touches[0].clientY), { passive: true, signal });
+    wrapper.addEventListener("touchmove", e => { onMove(e.touches[0].clientX, e.touches[0].clientY); }, { passive: true, signal });
+    wrapper.addEventListener("touchend", onEnd, { signal });
+    wrapper.addEventListener("touchcancel", onEnd, { signal });
+
+    wrapper.addEventListener("mousedown", e => { if (e.button === 0) onStart(e.clientX, e.clientY); }, { signal });
+    window.addEventListener("mousemove", e => onMove(e.clientX, e.clientY), { signal });
+    window.addEventListener("mouseup", onEnd, { signal });
+  }
+
+  async _triggerRefresh() {
+    this._animating = true;
+    const content = this.querySelector(".npt-swipe-content");
+    if (content) {
+      content.classList.add("npt-blinking");
+      await new Promise(r => setTimeout(r, 900));
+      content.classList.remove("npt-blinking");
+    }
+    this._animating = false;
+    try {
+      await this._hass.callService("norwegian_parcel_tracker", "refresh", {});
+    } catch (_) {}
+    this.render();
   }
 
   // ── Settings panel ───────────────────────────────────────────────────────────
@@ -374,7 +474,7 @@ class NorwegianParcelTrackingCard extends HTMLElement {
   _isDelivered(attrs) {
     if (attrs.is_delivered === true) return true;
     const text = `${attrs.status || ""} ${attrs.latest_event || ""} ${attrs.status_code || ""}`.toLowerCase();
-    return text.includes("pakken er levert") || text.includes("delivered");
+    return text.includes("pakken er levert") || text.includes("delivered") || text.includes("hentet pakken");
   }
 
   // ── Add parcel ───────────────────────────────────────────────────────────────
@@ -451,6 +551,13 @@ class NorwegianParcelTrackingCard extends HTMLElement {
 
   _styles() {
     return `<style>
+      .npt-swipe-wrapper { position: relative; overflow: hidden; border-radius: var(--ha-card-border-radius, 12px); }
+      .npt-refresh-hint { position: absolute; left: 0; top: 0; bottom: 0; display: flex; align-items: center; padding-left: 20px; font-weight: 700; font-size: 1rem; color: var(--primary-color); opacity: 0; pointer-events: none; user-select: none; white-space: nowrap; will-change: opacity, transform; }
+      .npt-swipe-content { will-change: transform; }
+      @keyframes npt-blink { 0%,100%{opacity:1} 14%,42%,70%{opacity:0} 28%,56%,84%{opacity:1} }
+      .npt-blinking { animation: npt-blink 0.9s ease-in-out forwards; }
+      @keyframes npt-spin { to { transform: rotate(360deg); } }
+      .npt-spinner { display: inline-block; width: 13px; height: 13px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: npt-spin 0.75s linear infinite; vertical-align: middle; margin-left: 6px; }
       .npt-card { padding: 16px; }
       .npt-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
       .npt-title { font-size: 1.15rem; font-weight: 600; }
