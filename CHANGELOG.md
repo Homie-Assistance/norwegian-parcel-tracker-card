@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.0
+
+- Swipe right to manually refresh all parcels. A "↻ Refresh" hint appears as you drag; the card blinks three times to confirm the refresh triggered.
+- Per-row spinner while a refresh is in progress.
+- Helthjem parcels collected from a pickup point now colour green correctly.
+- Card no longer re-renders on every Home Assistant state push — only when parcel data actually changes.
+
 ## 1.3.1
 
 - Added HACS validation workflow.
