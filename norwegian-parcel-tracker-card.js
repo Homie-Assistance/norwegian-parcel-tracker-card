@@ -67,8 +67,24 @@ class NorwegianParcelTrackingCard extends HTMLElement {
   }
 
   set hass(hass) {
+    const prev = this._hass;
     this._hass = hass;
-    if (!this._showSettings && !this._dragging && !this._animating) this.render();
+    if (!this._showSettings && !this._dragging && !this._animating) {
+      if (!prev || this._parcelStatesChanged(prev.states, hass.states)) this.render();
+    }
+  }
+
+  _parcelStatesChanged(prevStates, nextStates) {
+    const cfg = this._getCfg();
+    let ids;
+    if (Array.isArray(cfg.entities) && cfg.entities.length > 0) {
+      ids = cfg.entities;
+    } else {
+      const isMaster = (id, s) => id.startsWith("sensor.") &&
+        (s?.attributes?.npt_master_entity === true || s?.attributes?.parcel_tracker_entity === "status");
+      ids = Object.keys(nextStates).filter(id => isMaster(id, nextStates[id]));
+    }
+    return ids.some(id => prevStates[id] !== nextStates[id]);
   }
 
   getCardSize() {
