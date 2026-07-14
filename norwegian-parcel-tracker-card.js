@@ -2,6 +2,7 @@
 const NPT_STRINGS = {
   nb: {
     title: "Pakker", addBtn: "Legg til pakke", addPrompt: "Sporingsnummer:",
+    namePrompt: "Visningsnavn (valgfritt – trykk Avbryt eller la stå tom for å hoppe over):",
     adding: "Legger til pakke…",
     addOk: "Pakke lagt til. Det kan ta litt tid.",
     addErr: "Feil", addErrUnknown: "ukjent feil",
@@ -23,6 +24,7 @@ const NPT_STRINGS = {
   },
   en: {
     title: "Parcels", addBtn: "Add parcel", addPrompt: "Tracking number:",
+    namePrompt: "Display name (optional – press Cancel or leave blank to skip):",
     adding: "Adding parcel…",
     addOk: "Parcel added. It may take a moment to appear.",
     addErr: "Error", addErrUnknown: "unknown error",
@@ -483,13 +485,17 @@ class NorwegianParcelTrackingCard extends HTMLElement {
     if (this._addBusy) return;
     const tracking = window.prompt(this._str("addPrompt"))?.trim();
     if (!tracking) return;
+    const nameRaw = window.prompt(this._str("namePrompt"));
+    const name = (nameRaw ?? "").trim();
 
     this._addBusy = true;
     this._addMessage = this._str("adding");
     this.render();
 
     try {
-      await this._hass.callService("norwegian_parcel_tracker", "add_parcel", { tracking_number: tracking });
+      const serviceData = { tracking_number: tracking };
+      if (name) serviceData.name = name;
+      await this._hass.callService("norwegian_parcel_tracker", "add_parcel", serviceData);
       this._addMessage = this._str("addOk");
     } catch (err) {
       this._addMessage = `${this._str("addErr")}: ${err?.message || this._str("addErrUnknown")}`;

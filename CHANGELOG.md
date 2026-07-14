@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.0
+
+- Adding a parcel from the card now asks for an optional display name after the tracking number — matching the integration UI flow.
+
 ## 1.4.0
 
 - Swipe right to manually refresh all parcels. A "↻ Refresh" hint appears as you drag; the card blinks three times to confirm the refresh triggered.
