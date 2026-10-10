@@ -11,6 +11,14 @@ const NPT_STRINGS = {
     eta: "Estimert levering", lastSeen: "Sist sett", time: "Tid",
     orderHome: "Bestille hjemlevering",
     refresh: "Oppdater",
+    refreshParcel: "Oppdater denne pakken",
+    deleteParcel: "Fjern denne pakken",
+    deleteConfirm: "Fjerne pakken?",
+    rowSettings: "Tidsgrenser for denne pakken",
+    rowSettingsTitle: "Tidsgrenser",
+    rowStaleHours: "Timer → treg",
+    rowCriticalHours: "Timer → kritisk",
+    rowReset: "Tilbakestill til kortstandard",
     s: {
       title: "Innstillinger", language: "Språk",
       langNb: "Norsk", langEn: "English",
@@ -33,6 +41,14 @@ const NPT_STRINGS = {
     eta: "Estimated delivery", lastSeen: "Last seen", time: "Time",
     orderHome: "Order home delivery",
     refresh: "Refresh",
+    refreshParcel: "Refresh this parcel",
+    deleteParcel: "Remove this parcel",
+    deleteConfirm: "Remove this parcel?",
+    rowSettings: "Thresholds for this parcel",
+    rowSettingsTitle: "Thresholds",
+    rowStaleHours: "Hours → stale",
+    rowCriticalHours: "Hours → critical",
+    rowReset: "Reset to card defaults",
     s: {
       title: "Settings", language: "Language",
       langNb: "Norsk", langEn: "English",
@@ -61,6 +77,7 @@ class NorwegianParcelTrackingCard extends HTMLElement {
     this._dragging = false;
     this._animating = false;
     this._swipeController = null;
+    this._rowSettingsFor = null; // tracking_number of the row whose settings are open
   }
 
   setConfig(config) {
@@ -71,7 +88,7 @@ class NorwegianParcelTrackingCard extends HTMLElement {
   set hass(hass) {
     const prev = this._hass;
     this._hass = hass;
-    if (!this._showSettings && !this._dragging && !this._animating) {
+    if (!this._showSettings && !this._rowSettingsFor && !this._dragging && !this._animating) {
       if (!prev || this._parcelStatesChanged(prev.states, hass.states)) this.render();
     }
   }
@@ -99,9 +116,20 @@ class NorwegianParcelTrackingCard extends HTMLElement {
     return `npt_card_${this._yamlConfig?.title ?? "Pakker"}`;
   }
 
+  _rowStorageKey(trackingNumber) {
+    return `npt_row_${trackingNumber}`;
+  }
+
   _loadStored() {
     try {
       const r = localStorage.getItem(this._storageKey());
+      return r ? JSON.parse(r) : {};
+    } catch { return {}; }
+  }
+
+  _loadRowStored(trackingNumber) {
+    try {
+      const r = localStorage.getItem(this._rowStorageKey(trackingNumber));
       return r ? JSON.parse(r) : {};
     } catch { return {}; }
   }
@@ -181,6 +209,27 @@ class NorwegianParcelTrackingCard extends HTMLElement {
     this.querySelector("#npt-add-btn")?.addEventListener("click", () => this._addParcel());
     this.querySelector("#npt-settings-btn")?.addEventListener("click", () => this._openSettings());
     this.querySelector("#npt-flag-btn")?.addEventListener("click", () => this._toggleLang());
+
+    // Per-row action buttons
+    this.querySelectorAll(".npt-row-refresh").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this._refreshParcel(btn.dataset.tn);
+      });
+    });
+    this.querySelectorAll(".npt-row-delete").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this._deleteParcel(btn.dataset.tn);
+      });
+    });
+    this.querySelectorAll(".npt-row-settings").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this._openRowSettings(btn.dataset.tn);
+      });
+    });
+
     this._attachSwipeGesture();
   }
 
@@ -188,6 +237,7 @@ class NorwegianParcelTrackingCard extends HTMLElement {
     const a = state.attributes || {};
     const cls = this._rowClass(a, cfg);
     const sender = a.sender_name || a.tracking_number || state.name;
+    const tn = a.tracking_number || "";
     const latest = a.latest_event || state.state;
     const status = a.status || state.state;
     const pickupValue = this._cleanPickup(a.pickup_name || a.pickup_display);
@@ -202,10 +252,110 @@ class NorwegianParcelTrackingCard extends HTMLElement {
       : "";
 
     const spinner = a.refreshing ? `<span class="npt-spinner"></span>` : "";
+    const rowStored = tn ? this._loadRowStored(tn) : {};
+    const hasCustomThresholds = rowStored.stale_hours !== undefined || rowStored.critical_hours !== undefined;
+    const thresholdDot = hasCustomThresholds ? `<span class="npt-threshold-dot" title="${this._str("rowSettings")}">●</span>` : "";
+
+    const actions = tn ? `
+      <div class="npt-row-actions">
+        <button class="npt-row-btn npt-row-settings" data-tn="${this._escapeAttr(tn)}" title="${this._str("rowSettings")}">⏱${thresholdDot}</button>
+        <button class="npt-row-btn npt-row-refresh" data-tn="${this._escapeAttr(tn)}" title="${this._str("refreshParcel")}">↺</button>
+        <button class="npt-row-btn npt-row-delete" data-tn="${this._escapeAttr(tn)}" title="${this._str("deleteParcel")}">🗑</button>
+      </div>` : "";
+
     return `<div class="npt-row ${cls}">
       <div class="npt-main"><span>${this._escape(sender)}</span><span>${this._escape(status)}${spinner}</span></div>
       <div class="npt-meta"><div>${this._escape(latest)}</div>${loc}${time}${eta}${pickup}${home}</div>
+      ${actions}
     </div>`;
+  }
+
+  // ── Per-row actions ───────────────────────────────────────────────────────────
+
+  async _refreshParcel(trackingNumber) {
+    if (!trackingNumber) return;
+    try {
+      await this._hass.callService("norwegian_parcel_tracker", "refresh", { tracking_number: trackingNumber });
+    } catch (_) {}
+    this.render();
+  }
+
+  async _deleteParcel(trackingNumber) {
+    if (!trackingNumber) return;
+    if (!window.confirm(this._str("deleteConfirm"))) return;
+    try {
+      await this._hass.callService("norwegian_parcel_tracker", "remove_parcel", { tracking_number: trackingNumber });
+    } catch (_) {}
+    this.render();
+  }
+
+  _openRowSettings(trackingNumber) {
+    if (!trackingNumber) return;
+    this._rowSettingsFor = trackingNumber;
+    this._renderRowSettings(trackingNumber);
+  }
+
+  _renderRowSettings(trackingNumber) {
+    const cfg = this._getCfg();
+    const rowStored = this._loadRowStored(trackingNumber);
+    const stale = rowStored.stale_hours ?? cfg.stale_hours ?? 24;
+    const critical = rowStored.critical_hours ?? cfg.critical_hours ?? 72;
+
+    this.innerHTML = `
+      <ha-card>
+        <div class="npt-card">
+          <div class="npt-header">
+            <div class="npt-title">${this._str("rowSettingsTitle")}</div>
+            <button id="npt-close" class="npt-icon-btn" title="${this._str("s.cancel")}">✕</button>
+          </div>
+          <div class="npt-settings">
+            <div class="npt-ssec">${this._escape(trackingNumber)}</div>
+            <div class="npt-srow">
+              <label class="npt-slabel">${this._str("rowStaleHours")}</label>
+              <input type="number" id="row-stale-hours" value="${stale}" min="1" max="999" class="npt-num-input">
+            </div>
+            <div class="npt-srow">
+              <label class="npt-slabel">${this._str("rowCriticalHours")}</label>
+              <input type="number" id="row-critical-hours" value="${critical}" min="1" max="999" class="npt-num-input">
+            </div>
+            <div class="npt-footer">
+              <button id="npt-row-save" class="npt-btn-pri">${this._str("s.save")}</button>
+              <button id="npt-row-reset" class="npt-btn-sec">${this._str("rowReset")}</button>
+              <button id="npt-row-cancel" class="npt-btn-sec">${this._str("s.cancel")}</button>
+            </div>
+          </div>
+        </div>
+      </ha-card>
+      ${this._styles()}
+    `;
+
+    this.querySelector("#npt-row-save")?.addEventListener("click", () => {
+      const sh = Math.max(1, Math.min(999, parseInt(this.querySelector("#row-stale-hours")?.value || "24", 10)));
+      const ch = Math.max(1, Math.min(999, parseInt(this.querySelector("#row-critical-hours")?.value || "72", 10)));
+      try {
+        localStorage.setItem(this._rowStorageKey(trackingNumber), JSON.stringify({
+          stale_hours: isNaN(sh) ? 24 : sh,
+          critical_hours: isNaN(ch) ? 72 : Math.max((isNaN(sh) ? 24 : sh) + 1, ch),
+        }));
+      } catch {}
+      this._rowSettingsFor = null;
+      this.render();
+    });
+
+    this.querySelector("#npt-row-reset")?.addEventListener("click", () => {
+      try { localStorage.removeItem(this._rowStorageKey(trackingNumber)); } catch {}
+      this._rowSettingsFor = null;
+      this.render();
+    });
+
+    this.querySelector("#npt-row-cancel")?.addEventListener("click", () => {
+      this._rowSettingsFor = null;
+      this.render();
+    });
+    this.querySelector("#npt-close")?.addEventListener("click", () => {
+      this._rowSettingsFor = null;
+      this.render();
+    });
   }
 
   // ── Swipe-to-refresh ─────────────────────────────────────────────────────────
@@ -466,8 +616,10 @@ class NorwegianParcelTrackingCard extends HTMLElement {
     const t = attrs.latest_event_time;
     if (!t) return "";
     const ageHours = (Date.now() - new Date(t).getTime()) / 36e5;
-    const critical = Number(cfg.critical_hours ?? 72);
-    const stale = Number(cfg.stale_hours ?? 24);
+    const tn = attrs.tracking_number || "";
+    const rowStored = tn ? this._loadRowStored(tn) : {};
+    const critical = Number(rowStored.critical_hours ?? cfg.critical_hours ?? 72);
+    const stale = Number(rowStored.stale_hours ?? cfg.stale_hours ?? 24);
     if (critical > 0 && ageHours >= critical) return "critical";
     if (stale > 0 && ageHours >= stale) return "warn";
     return "";
@@ -575,7 +727,7 @@ class NorwegianParcelTrackingCard extends HTMLElement {
       .npt-add-icon { background: var(--primary-color); color: var(--text-primary-color); font-weight: 700; font-size: 1.3rem; padding: 2px 10px; }
       .npt-add-icon:hover { filter: brightness(1.15); }
       .npt-msg { font-size: 0.8rem; opacity: 0.85; text-align: right; margin-bottom: 8px; }
-      .npt-row { margin: 8px 0; border-radius: 10px; padding: 12px; background: var(--npt-normal, var(--secondary-background-color)); color: var(--primary-text-color); border-left: 5px solid var(--divider-color); }
+      .npt-row { margin: 8px 0; border-radius: 10px; padding: 10px 12px 6px; background: var(--npt-normal, var(--secondary-background-color)); color: var(--primary-text-color); border-left: 5px solid var(--divider-color); }
       .npt-row.delivered { background: var(--npt-delivered, #1f7a3f); color: #fff; border-left-color: #0b4f28; }
       .npt-row.warn { background: var(--npt-stale, #b88700); color: #000; border-left-color: #6d5100; }
       .npt-row.critical { background: var(--npt-critical, #8b1e1e); color: #fff; border-left-color: #4d0c0c; }
@@ -583,6 +735,10 @@ class NorwegianParcelTrackingCard extends HTMLElement {
       .npt-meta { margin-top: 6px; font-size: 0.9rem; opacity: 0.95; line-height: 1.45; }
       .npt-empty { opacity: 0.7; }
       .npt-link { color: inherit; text-decoration: underline; }
+      .npt-row-actions { display: flex; justify-content: flex-end; gap: 2px; margin-top: 6px; padding-top: 4px; border-top: 1px solid rgba(128,128,128,0.2); }
+      .npt-row-btn { border: none; border-radius: 5px; padding: 2px 7px; cursor: pointer; background: transparent; color: inherit; font-size: 0.9rem; opacity: 0.6; line-height: 1.4; }
+      .npt-row-btn:hover { opacity: 1; background: rgba(128,128,128,0.15); }
+      .npt-threshold-dot { font-size: 0.5rem; vertical-align: super; color: var(--primary-color); }
       /* ── Settings ── */
       .npt-settings { display: flex; flex-direction: column; gap: 2px; }
       .npt-ssec { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; opacity: 0.55; margin-top: 16px; padding-bottom: 3px; border-bottom: 1px solid var(--divider-color); }
@@ -597,7 +753,7 @@ class NorwegianParcelTrackingCard extends HTMLElement {
       .npt-lang-btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--divider-color); border-radius: 6px; padding: 5px 12px; font-size: 0.9rem; cursor: pointer; background: transparent; color: var(--primary-text-color); }
       .npt-lang-btn.on { background: var(--primary-color); color: var(--text-primary-color); border-color: var(--primary-color); }
       .npt-num-input { width: 72px; padding: 3px 6px; border: 1px solid var(--divider-color); border-radius: 4px; background: var(--secondary-background-color); color: var(--primary-text-color); font-size: 0.9rem; text-align: right; }
-      .npt-footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--divider-color); }
+      .npt-footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; padding-top: 12px; border-top: 1px solid var(--divider-color); flex-wrap: wrap; }
       .npt-btn-pri { background: var(--primary-color); color: var(--text-primary-color); border: none; border-radius: 6px; padding: 7px 20px; cursor: pointer; font-weight: 600; font-size: 0.95rem; }
       .npt-btn-sec { background: transparent; color: var(--primary-text-color); border: 1px solid var(--divider-color); border-radius: 6px; padding: 7px 20px; cursor: pointer; font-size: 0.95rem; }
     </style>`;
