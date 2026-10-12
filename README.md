@@ -50,6 +50,30 @@ And registers the Lovelace resource as:
 
 3. The `deploy.sh` script in this repo automates steps 1–2 and detects your install type automatically.
 
+## Map card
+
+The repo also includes `norwegian-parcel-tracker-map-card.js` — a separate Lovelace card showing the parcel's current geocoded location on a map with recent event history. It requires integration v1.3.0 or later.
+
+HACS downloads the file automatically but does **not** auto-register it. After HACS installation, add it manually:
+
+**Settings → Dashboards → Resources → Add resource**
+
+| Field | Value |
+|---|---|
+| URL | `/local/community/norwegian-parcel-tracker-card/norwegian-parcel-tracker-map-card.js` |
+| Resource type | JavaScript module |
+
+Then add it to your dashboard:
+
+```yaml
+type: custom:norwegian-parcel-tracker-map-card
+entity: device_tracker.parcel_TRACKINGNUMBER_location
+title: "My parcel"   # optional
+history_rows: 5       # optional, default 5
+```
+
+The `entity` value is the `device_tracker` entity created per parcel by integration v1.3.0. The card auto-discovers the matching status sensor to show recent events.
+
 ## Card configuration
 
 ```yaml

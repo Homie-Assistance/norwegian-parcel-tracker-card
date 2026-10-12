@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.0
+
+- Added `custom:norwegian-parcel-tracker-map-card`: a new Lovelace card that shows the current geocoded parcel location on a map (using HA's built-in `ha-map` element, no CDN dependency), with recent event history below. Requires integration v1.3.0 or later (which adds `device_tracker` entities). Configure by pointing at the `device_tracker` entity. The card auto-discovers the matching status sensor for recent events. Note: HACS only auto-registers the main card file; the map card must be added as a Lovelace resource manually (see README).
+
 ## 1.5.0
 
 - Adding a parcel from the card now asks for an optional display name after the tracking number — matching the integration UI flow.
