@@ -67,12 +67,12 @@ Then add it to your dashboard:
 
 ```yaml
 type: custom:norwegian-parcel-tracker-map-card
-entity: device_tracker.parcel_TRACKINGNUMBER_location
+entity: device_tracker.parcel_TRACKINGNUMBER_<suffix>
 title: "My parcel"   # optional
 history_rows: 5       # optional, default 5
 ```
 
-The `entity` value is the `device_tracker` entity created per parcel by integration v1.3.0. The card auto-discovers the matching status sensor to show recent events.
+The `entity` is the `device_tracker` entity created per parcel by integration v1.3.0. Its exact entity_id appears in **Settings → Devices & services → Norwegian Parcel Tracker**. The card auto-discovers the matching status sensor regardless of your HA language setting.
 
 ## Card configuration
 

@@ -14,7 +14,7 @@
  * to pull the recent_events list.
  */
 
-const CARD_VERSION = "1.0.0";
+const CARD_VERSION = "1.0.1";
 const DEFAULT_HISTORY_ROWS = 5;
 const DEFAULT_ZOOM = 11;
 
@@ -130,18 +130,39 @@ class NorwegianParcelTrackerMapCard extends HTMLElement {
   }
 
   _findStatusSensorEntity() {
-    // device_tracker unique_id pattern: "<entry_id>_location"
-    // status sensor unique_id pattern: "<entry_id>_status"
-    // They share the same device (identifiers match), but we find by entity_id convention:
-    // device_tracker.X_location → sensor.X_status (X is the tracking number slug)
     const dtId = this._config.entity;
     const states = this._hass.states;
-    // Look for a sensor whose entity_id replaces 'device_tracker.' with 'sensor.'
-    // and '_location' suffix with '_status'
-    const candidate = dtId
-      .replace(/^device_tracker\./, "sensor.")
-      .replace(/_location$/, "_status");
-    return states[candidate] || null;
+    const entities = this._hass.entities;
+
+    // Prefer entity-registry lookup: find the sensor on the same device that has recent_events.
+    // This is locale-agnostic — works regardless of HA language setting.
+    if (entities && entities[dtId]?.device_id) {
+      const deviceId = entities[dtId].device_id;
+      for (const [eid, einfo] of Object.entries(entities)) {
+        if (
+          eid.startsWith("sensor.") &&
+          einfo.device_id === deviceId &&
+          states[eid]?.attributes?.recent_events !== undefined
+        ) {
+          return states[eid];
+        }
+      }
+    }
+
+    // Fallback for older HA or missing registry: strip the locale suffix from the
+    // device_tracker slug and scan sensors for one sharing the base slug that has recent_events.
+    const base = dtId.replace(/^device_tracker\./, "").replace(/_[^_]+$/, "");
+    for (const [eid, estate] of Object.entries(states)) {
+      if (
+        eid.startsWith("sensor.") &&
+        eid.includes(base) &&
+        estate.attributes?.recent_events !== undefined
+      ) {
+        return estate;
+      }
+    }
+
+    return null;
   }
 
   _render() {
