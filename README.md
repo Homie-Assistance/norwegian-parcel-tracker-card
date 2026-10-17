@@ -8,7 +8,7 @@ A Lovelace dashboard card for parcels tracked by [Norwegian parcel tracker](http
 
 ## Installation with HACS
 
-Add **this** repository as a HACS custom repository with category **Frontend**:
+Add **this** repository as a HACS custom repository with category **Dashboard**:
 
 ```text
 https://github.com/Homie-Assistance/norwegian-parcel-tracker-card
